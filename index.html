@@ -1,404 +1,22 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { 
-  Upload, Search, FileSpreadsheet, X, AlertCircle, 
-  Activity, Database, FileText, CheckCircle2, 
-  AlertTriangle, Clock, Users, BarChart3, 
-  LayoutDashboard, ChevronRight, Info, Layers, Hash,
-  Zap, ShieldAlert, Cpu, Filter, Terminal, Radio,
-  MousePointer2, Tag
-} from 'lucide-react';
-
-const StatusBadge = ({ status }) => {
-  let colorClass = "bg-slate-800 text-slate-300 border-slate-700";
-  let Icon = Activity;
-  if (!status) return <span className="text-slate-500">-</span>;
-  const s = status.toString().trim();
-  
-  // 修正：加入 whitespace-nowrap 確保不換行
-  const baseClass = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-black border tracking-wide uppercase whitespace-nowrap";
-
-  if (s.includes("正常") || s.includes("完成") || s.includes("OK")) {
-    colorClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]";
-    Icon = CheckCircle2;
-  } else if (s.includes("異常") || s.includes("取消") || s.includes("錯誤") || s.includes("Fail")) {
-    colorClass = "bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.2)]";
-    Icon = AlertCircle;
-  } else if (s.includes("暫停") || s.includes("待機") || s.includes("Warning")) {
-    colorClass = "bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.2)]";
-    Icon = AlertTriangle;
-  } else if (s.includes("執行") || s.includes("中") || s.includes("生產")) {
-    colorClass = "bg-cyan-500/10 text-cyan-400 border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.2)]";
-    Icon = Clock;
-  }
-  
-  return (
-    <span className={`${baseClass} ${colorClass}`}>
-      <Icon className="w-3.5 h-3.5" />
-      {s}
-    </span>
-  );
-};
-
-const ProductionDashboard = () => {
-  const [data, setData] = useState([]);
-  const [fileName, setFileName] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [actionFilter, setActionFilter] = useState('all'); 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [isScriptLoaded, setIsScriptLoaded] = useState(false);
-  const [selectedOperator, setSelectedOperator] = useState(null);
-  const fileInputRef = useRef(null);
-
-  // 預設常用標籤
-  const quickTags = ["作業取消", "暫停", "撤銷", "入站", "出站", "生產中"];
-
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-    script.async = true;
-    script.onload = () => setIsScriptLoaded(true);
-    document.body.appendChild(script);
-    return () => { if (document.body.contains(script)) document.body.removeChild(script); };
-  }, []);
-
-  const displayColumns = [
-    { key: "工單編號", label: "工單號碼", width: "150px" },
-    { key: "操作動作", label: "作業動作", width: "110px" },
-    { key: "狀態", label: "當前狀態", width: "110px" },
-    { key: "製程", label: "製程序", width: "100px" },
-    { key: "設備", label: "生產設備", width: "140px" },
-    { key: "產線", label: "產線", width: "90px" },
-    { key: "預計產量", label: "預計", width: "80px" },
-    { key: "數量", label: "實績", width: "70px" },
-    { key: "執行時間", label: "執行時間戳", width: "180px" },
-    { key: "操作員", label: "操作員", width: "110px" },
-    { key: "備註", label: "系統備註", width: "320px" } 
-  ];
-
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file || !window.XLSX) return;
-    setLoading(true);
-    setError('');
-    setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      try {
-        const workbook = window.XLSX.read(evt.target.result, { type: 'array' });
-        let jsonData = window.XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系統作業紀錄 - 生產行為日誌追踪器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500;900&display=swap');
         
-        jsonData.sort((a, b) => {
-          const orderA = String(a["工單編號"] || "");
-          const orderB = String(b["工單編號"] || "");
-          if (orderA !== orderB) return orderA.localeCompare(orderB);
-          const timeA = new Date(a["執行時間"] || 0).getTime();
-          const timeB = new Date(b["執行時間"] || 0).getTime();
-          return timeA - timeB;
-        });
-
-        setData(jsonData);
-      } catch (err) { setError('讀取失敗'); }
-      finally { setLoading(false); }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  const actionOptions = useMemo(() => {
-    const actions = new Set(data.map(item => item["操作動作"]).filter(Boolean));
-    return Array.from(actions).sort();
-  }, [data]);
-
-  const { displayRows, pivotData, finalFilteredCount } = useMemo(() => {
-    if (data.length === 0) return { displayRows: [], pivotData: [], finalFilteredCount: 0 };
-    
-    const lowerTerm = searchTerm.trim().toLowerCase();
-    const matchIndices = [];
-    const pivotMap = {};
-
-    data.forEach((row, index) => {
-      if (!lowerTerm) return;
-      
-      const rowStr = Object.values(row).join(' ').toLowerCase();
-      const actionMatch = actionFilter === 'all' || row["操作動作"] === actionFilter;
-      
-      if (rowStr.includes(lowerTerm) && actionMatch) {
-        const op = row["操作員"] || "系統預設";
-        pivotMap[op] = (pivotMap[op] || 0) + 1;
-        if (!selectedOperator || op === selectedOperator) matchIndices.push(index);
-      }
-    });
-
-    const pivotList = Object.entries(pivotMap).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-
-    if (!lowerTerm) return { 
-      displayRows: data.slice(0, 50).map((r, i) => ({ ...r, originalIndex: i + 1, isMatch: false, rowUniqueKey: `init-${i}` })), 
-      pivotData: [], 
-      finalFilteredCount: 0 
-    };
-
-    const contextIndices = new Set();
-    matchIndices.forEach(idx => {
-      for (let i = idx - 3; i <= idx + 3; i++) {
-        if (i >= 0 && i < data.length && data[i]["工單編號"] === data[idx]["工單編號"]) {
-          contextIndices.add(i);
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #020617;
         }
-      }
-    });
 
-    const sortedIndices = Array.from(contextIndices).sort((a, b) => a - b);
-    const resultRows = [];
-    let lastIdx = -1;
-
-    sortedIndices.forEach(idx => {
-      if (lastIdx !== -1 && idx !== lastIdx + 1) resultRows.push({ isGap: true, rowUniqueKey: `gap-${lastIdx}-${idx}` });
-      resultRows.push({ ...data[idx], originalIndex: idx + 1, isMatch: matchIndices.includes(idx), rowUniqueKey: `data-${idx}` });
-      lastIdx = idx;
-    });
-
-    return { displayRows: resultRows, pivotData: pivotList, finalFilteredCount: matchIndices.length };
-  }, [data, searchTerm, selectedOperator, actionFilter]);
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-cyan-500/30 relative overflow-hidden">
-      {/* 科技背景裝飾 */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,#1e293b,transparent)] pointer-events-none"></div>
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cpath d="M60 60L30 30L0 60" fill="none" stroke="%23fff" stroke-width="1"/%3E%3C/svg%3E')`, backgroundSize: '30px 30px' }}></div>
-
-      {/* 科技感導航欄 */}
-      <nav className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-cyan-500/30 shadow-[0_4px_30px_rgba(6,182,212,0.15)]">
-        <div className="max-w-full mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-               <div className="absolute -inset-1 bg-cyan-500 rounded-lg blur opacity-25"></div>
-               <div className="relative p-2 bg-slate-900 rounded-lg border border-cyan-500/50">
-                <Terminal className="w-6 h-6 text-cyan-400" />
-               </div>
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-white tracking-widest uppercase italic">系統作業紀錄 <span className="text-cyan-400 font-normal underline underline-offset-4 decoration-1">Crafted by 勝全 · Powered by AI</span></h1>
-              <div className="flex items-center gap-2 text-[10px] text-cyan-500/60 font-bold tracking-[0.25em]">
-                <Radio className="w-3 h-3 animate-pulse" /> 生產行為日誌追踪器
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-6">
-            {fileName && (
-              <div className="flex items-center gap-3 bg-cyan-500/5 border border-cyan-500/20 px-4 py-1.5 rounded-full">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_8px_#10b981]"></div>
-                <span className="text-xs font-black text-cyan-100 tracking-wider uppercase opacity-80">{fileName}</span>
-              </div>
-            )}
-            <div className="h-4 w-px bg-slate-800"></div>
-            <div className="text-[10px] font-black text-slate-500 tracking-[0.2em] uppercase">系統狀態: <span className="text-emerald-500">在線</span></div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-full mx-auto px-6 py-6 space-y-6 relative z-10">
-        {/* 頂部搜尋與快速標籤區 */}
-        <section className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
-          <div className="md:col-span-3 lg:col-span-2 bg-slate-900/50 backdrop-blur-md p-5 rounded-2xl border border-slate-800 flex flex-col justify-center">
-            {!data.length ? (
-              <div className="relative h-20 flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-xl hover:bg-cyan-500/5 hover:border-cyan-500/50 transition-all cursor-pointer">
-                <input type="file" ref={fileInputRef} accept=".xlsx, .xls" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                <Upload className="w-6 h-6 text-slate-600 mb-1" />
-                <span className="text-[10px] font-black text-slate-500 uppercase">匯入資料庫</span>
-              </div>
-            ) : (
-              <div>
-                <div className="text-[10px] font-black text-cyan-500/50 mb-1 tracking-widest uppercase">數據節點總數</div>
-                <div className="text-3xl font-black text-white leading-none tabular-nums tracking-tighter">
-                  {data.length.toLocaleString()}
-                </div>
-                <button onClick={() => {setData([]); setSearchTerm('');}} className="mt-3 flex items-center gap-1.5 text-[10px] font-black text-rose-500/80 hover:text-rose-400 uppercase tracking-widest transition-colors">
-                  <X className="w-3 h-3" /> 清除緩存數據
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="md:col-span-9 lg:col-span-10 flex flex-col gap-3">
-            <div className="flex gap-4">
-              <div className="flex-1 bg-slate-900/50 backdrop-blur-md rounded-2xl border border-slate-800 p-2 flex items-center shadow-lg">
-                <div className="relative flex-1 group">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-600 group-focus-within:text-cyan-400 transition-colors" />
-                  <input
-                    type="text"
-                    placeholder="輸入關鍵字或從下方標籤點擊..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    disabled={!data.length}
-                    className="w-full bg-transparent border-none rounded-xl py-3 pl-14 pr-6 text-lg font-bold outline-none text-white placeholder:text-slate-700"
-                  />
-                </div>
-                
-                {/* 下拉式篩選：依照作業動作 */}
-                <div className="h-10 w-px bg-slate-800 mx-2"></div>
-                <div className="relative flex items-center px-4 gap-3 bg-slate-950/50 rounded-xl border border-slate-800 min-w-[200px]">
-                  <Filter className="w-4 h-4 text-cyan-500" />
-                  <select 
-                    value={actionFilter}
-                    onChange={(e) => setActionFilter(e.target.value)}
-                    disabled={!data.length}
-                    className="bg-transparent text-sm font-black text-cyan-100 outline-none w-full cursor-pointer appearance-none py-2 uppercase tracking-wider"
-                  >
-                    <option value="all" className="bg-slate-900 text-white">全部作業動作 (ALL)</option>
-                    {actionOptions.map(opt => (
-                      <option key={opt} value={opt} className="bg-slate-900 text-white">{opt}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* 快速搜尋標籤 (優化：不用打字) */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar px-1">
-              <span className="text-[10px] font-black text-slate-600 flex items-center gap-1 whitespace-nowrap uppercase tracking-widest mr-2">
-                <Tag className="w-3 h-3" /> 快速掃描:
-              </span>
-              {quickTags.map(tag => (
-                <button
-                  key={tag}
-                  disabled={!data.length}
-                  onClick={() => setSearchTerm(tag)}
-                  className={`
-                    px-3 py-1 rounded-full text-[11px] font-black tracking-wider transition-all border
-                    ${searchTerm === tag 
-                      ? 'bg-cyan-500 border-cyan-400 text-slate-950 shadow-[0_0_10px_rgba(6,182,212,0.4)]' 
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-400'}
-                  `}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
-          {/* 左側命中名單 (中文化) */}
-          <section className="w-full lg:w-72 flex-shrink-0 bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl overflow-hidden self-stretch lg:self-auto">
-            <div className="px-5 py-4 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between">
-              <h3 className="font-black text-cyan-500 text-[11px] tracking-[0.2em] flex items-center gap-2 uppercase">
-                <ShieldAlert className="w-4 h-4" /> 目標操作員
-              </h3>
-              <div className="bg-cyan-500/20 text-cyan-400 text-[10px] px-2 py-0.5 rounded border border-cyan-500/30 font-black">{pivotData.length}</div>
-            </div>
-            <div className="p-3 space-y-2 max-h-[650px] overflow-y-auto custom-scrollbar-dark">
-              {pivotData.length > 0 ? pivotData.map((item) => (
-                <button
-                  key={`p-${item.name}`}
-                  onClick={() => setSelectedOperator(selectedOperator === item.name ? null : item.name)}
-                  className={`w-full flex items-center justify-between p-3 rounded-xl text-sm transition-all group ${
-                    selectedOperator === item.name 
-                    ? 'bg-cyan-500 text-slate-950 font-black shadow-[0_0_20px_rgba(6,182,212,0.4)]' 
-                    : 'bg-slate-950/50 text-slate-400 hover:bg-slate-800/80 border border-slate-800 hover:border-cyan-500/30'
-                  }`}
-                >
-                  <span className="truncate tracking-tight uppercase font-bold">{item.name}</span>
-                  <span className={`font-mono text-[10px] px-2 py-0.5 rounded-md ${selectedOperator === item.name ? 'bg-slate-950 text-cyan-400' : 'bg-slate-800 text-cyan-500'}`}>
-                    {item.count}
-                  </span>
-                </button>
-              )) : (
-                <div className="text-center py-20 opacity-20">
-                  <BarChart3 className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em]">待機掃描中</p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* 右側核心表格 (中文化與不換行優化) */}
-          <section className="flex-1 min-w-0 bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative">
-            <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/30">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                    <div className="w-2.5 h-2.5 bg-cyan-500 rounded-full"></div>
-                    <div className="absolute inset-0 w-2.5 h-2.5 bg-cyan-500 rounded-full animate-ping opacity-75"></div>
-                </div>
-                <h2 className="font-black text-white tracking-[0.1em] text-sm uppercase">生產溯源數據流 <span className="text-[10px] text-cyan-500/50 ml-2">Live Analysis</span></h2>
-              </div>
-              {searchTerm && (
-                <div className="bg-cyan-950 border border-cyan-500/50 px-3 py-1 rounded-md text-[10px] font-black text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]">
-                  檢測到 {finalFilteredCount} 組關聯節點
-                </div>
-              )}
-            </div>
-
-            <div className="overflow-auto max-h-[750px] custom-scrollbar relative">
-              <table className="w-full text-left border-collapse min-w-max">
-                <thead className="bg-slate-950/80 backdrop-blur sticky top-0 z-30 shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
-                  <tr>
-                    <th className="px-4 py-4 w-16 text-center border-r border-slate-800 font-black text-[10px] text-slate-500 uppercase tracking-widest">排序</th>
-                    {displayColumns.map(col => (
-                      <th key={`th-${col.key}`} style={{ width: col.width }} className="px-4 py-4 font-black text-[10px] text-slate-500 uppercase tracking-widest border-r border-slate-800 last:border-0">{col.label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/50">
-                  {displayRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={displayColumns.length + 1} className="py-40 text-center">
-                        <Database className="w-16 h-16 text-slate-800 mx-auto mb-4 opacity-20" />
-                        <p className="text-slate-600 font-black uppercase tracking-[0.4em] text-xs">系統待命中，請輸入搜尋指令</p>
-                      </td>
-                    </tr>
-                  ) : (
-                    displayRows.map((row) => {
-                      if (row.isGap) return (
-                        <tr key={row.rowUniqueKey} className="bg-slate-950/50">
-                          <td colSpan={displayColumns.length + 1} className="py-2 text-center text-[10px] font-black text-slate-600 tracking-[0.8em] uppercase italic bg-gradient-to-r from-transparent via-slate-800/50 to-transparent">
-                            --- 檢測到數據分斷 · 自動重新定位 ---
-                          </td>
-                        </tr>
-                      );
-                      const isMatch = row.isMatch;
-                      return (
-                        <tr 
-                          key={row.rowUniqueKey} 
-                          className={`
-                            transition-all duration-150 group
-                            ${isMatch 
-                              ? 'bg-cyan-500/20 text-white font-bold' 
-                              : 'bg-transparent text-slate-400 hover:bg-white/[0.02]'}
-                          `}
-                        >
-                          <td className={`px-4 py-3 text-center font-mono text-xs border-r ${isMatch ? 'bg-cyan-500/30 border-cyan-500/30 text-cyan-100' : 'text-slate-600 bg-slate-950/30 border-slate-800'}`}>
-                            {String(row.originalIndex).padStart(4, '0')}
-                          </td>
-                          {displayColumns.map(col => (
-                            <td key={`${row.rowUniqueKey}-${col.key}`} className={`px-4 py-3 border-r last:border-0 align-middle ${isMatch ? 'border-cyan-500/20' : 'border-slate-800/50'}`}>
-                              {col.key === '狀態' ? <StatusBadge status={row[col.key]} /> : (
-                                <div 
-                                  className={`whitespace-nowrap overflow-hidden leading-none text-[16px] tracking-tight ${isMatch ? 'text-cyan-300 font-black drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]' : 'text-slate-300 font-bold group-hover:text-white'}`}
-                                  style={{ maxWidth: col.width }}
-                                  title={row[col.key] || ''}
-                                >
-                                  {col.key === '備註' ? (
-                                    <span className="truncate block opacity-70 group-hover:opacity-100 transition-opacity">{row[col.key] || '-'}</span>
-                                  ) : (
-                                    row[col.key] || '-'
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
-      </main>
-
-      {/* 全域樣式 */}
-      <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #020617; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; border: 2px solid #020617; }
@@ -412,9 +30,401 @@ const ProductionDashboard = () => {
         select option { background-color: #0f172a; color: #fff; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
-    </div>
-  );
-};
 
-export default ProductionDashboard;
+        .selection-cyan::selection { background: rgba(6, 182, 212, 0.3); }
+    </style>
+</head>
+<body class="selection-cyan">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect, useMemo } = React;
+
+        // 靜態圖示組件 - 已修復 Adjacent JSX elements 錯誤
+        const Icon = ({ name, className = "" }) => {
+            const icons = {
+                upload: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-7 5-5 5 5m-5-5v12"/>,
+                search: <React.Fragment><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></React.Fragment>,
+                x: <path d="M18 6 6 18M6 6l12 12"/>,
+                terminal: <React.Fragment><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></React.Fragment>,
+                radio: <React.Fragment><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="10"/></React.Fragment>,
+                filter: <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>,
+                tag: <React.Fragment><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><line x1="7" x2="7.01" y1="7" y2="7"/></React.Fragment>,
+                shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,
+                database: <React.Fragment><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></React.Fragment>,
+                activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>,
+                check: <polyline points="20 6 9 17 4 12"/>,
+                alert: <React.Fragment><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></React.Fragment>,
+                triangle: <React.Fragment><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></React.Fragment>,
+                clock: <React.Fragment><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></React.Fragment>,
+                chart: <React.Fragment><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></React.Fragment>
+            };
+            return (
+                <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {icons[name]}
+                </svg>
+            );
+        };
+
+        const StatusBadge = ({ status }) => {
+            let colorClass = "bg-slate-800 text-slate-300 border-slate-700";
+            let iconName = "activity";
+            if (!status) return <span className="text-slate-500">-</span>;
+            const s = status.toString().trim();
+            
+            const baseClass = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-black border tracking-wide uppercase whitespace-nowrap";
+
+            if (s.includes("正常") || s.includes("完成") || s.includes("OK")) {
+                colorClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]";
+                iconName = "check";
+            } else if (s.includes("異常") || s.includes("取消") || s.includes("錯誤") || s.includes("Fail")) {
+                colorClass = "bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.2)]";
+                iconName = "alert";
+            } else if (s.includes("暫停") || s.includes("待機") || s.includes("Warning")) {
+                colorClass = "bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.2)]";
+                iconName = "triangle";
+            } else if (s.includes("執行") || s.includes("中") || s.includes("生產")) {
+                colorClass = "bg-cyan-500/10 text-cyan-400 border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.2)]";
+                iconName = "clock";
+            }
+            
+            return (
+                <span className={`${baseClass} ${colorClass}`}>
+                    <Icon name={iconName} className="w-3.5 h-3.5" />
+                    {s}
+                </span>
+            );
+        };
+
+        const ProductionDashboard = () => {
+            const [data, setData] = useState([]);
+            const [fileName, setFileName] = useState('');
+            const [searchTerm, setSearchTerm] = useState('');
+            const [actionFilter, setActionFilter] = useState('all'); 
+            const [loading, setLoading] = useState(false);
+            const [selectedOperator, setSelectedOperator] = useState(null);
+            const fileInputRef = useRef(null);
+
+            const quickTags = ["作業取消", "暫停", "撤銷", "入站", "出站", "生產中"];
+
+            const displayColumns = [
+                { key: "工單編號", label: "工單號碼", width: "150px" },
+                { key: "操作動作", label: "作業動作", width: "110px" },
+                { key: "狀態", label: "當前狀態", width: "110px" },
+                { key: "製程", label: "製程序", width: "100px" },
+                { key: "設備", label: "生產設備", width: "140px" },
+                { key: "產線", label: "產線", width: "90px" },
+                { key: "預計產量", label: "預計", width: "80px" },
+                { key: "數量", label: "實績", width: "70px" },
+                { key: "執行時間", label: "執行時間戳", width: "180px" },
+                { key: "操作員", label: "操作員", width: "110px" },
+                { key: "備註", label: "系統備註", width: "320px" } 
+            ];
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file || !window.XLSX) return;
+                setLoading(true);
+                setFileName(file.name);
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const workbook = window.XLSX.read(evt.target.result, { type: 'array' });
+                        let jsonData = window.XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+                        
+                        jsonData.sort((a, b) => {
+                            const orderA = String(a["工單編號"] || "");
+                            const orderB = String(b["工單編號"] || "");
+                            if (orderA !== orderB) return orderA.localeCompare(orderB);
+                            const timeA = new Date(a["執行時間"] || 0).getTime();
+                            const timeB = new Date(b["執行時間"] || 0).getTime();
+                            return timeA - timeB;
+                        });
+
+                        setData(jsonData);
+                    } catch (err) { console.error('讀取失敗', err); }
+                    finally { setLoading(false); }
+                };
+                reader.readAsArrayBuffer(file);
+            };
+
+            const actionOptions = useMemo(() => {
+                const actions = new Set(data.map(item => item["操作動作"]).filter(Boolean));
+                return Array.from(actions).sort();
+            }, [data]);
+
+            const { displayRows, pivotData, finalFilteredCount } = useMemo(() => {
+                if (data.length === 0) return { displayRows: [], pivotData: [], finalFilteredCount: 0 };
+                
+                const lowerTerm = searchTerm.trim().toLowerCase();
+                const matchIndices = [];
+                const pivotMap = {};
+
+                data.forEach((row, index) => {
+                    const rowStr = Object.values(row).join(' ').toLowerCase();
+                    const actionMatch = actionFilter === 'all' || row["操作動作"] === actionFilter;
+                    
+                    if (lowerTerm && rowStr.includes(lowerTerm) && actionMatch) {
+                        const op = row["操作員"] || "系統預設";
+                        pivotMap[op] = (pivotMap[op] || 0) + 1;
+                        if (!selectedOperator || op === selectedOperator) matchIndices.push(index);
+                    }
+                });
+
+                const pivotList = Object.entries(pivotMap).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+
+                if (!lowerTerm) return { 
+                    displayRows: data.slice(0, 50).map((r, i) => ({ ...r, originalIndex: i + 1, isMatch: false, rowUniqueKey: `init-${i}` })), 
+                    pivotData: [], 
+                    finalFilteredCount: 0 
+                };
+
+                const contextIndices = new Set();
+                matchIndices.forEach(idx => {
+                    for (let i = idx - 3; i <= idx + 3; i++) {
+                        if (i >= 0 && i < data.length && data[i]["工單編號"] === data[idx]["工單編號"]) {
+                            contextIndices.add(i);
+                        }
+                    }
+                });
+
+                const sortedIndices = Array.from(contextIndices).sort((a, b) => a - b);
+                const resultRows = [];
+                let lastIdx = -1;
+
+                sortedIndices.forEach(idx => {
+                    if (lastIdx !== -1 && idx !== lastIdx + 1) resultRows.push({ isGap: true, rowUniqueKey: `gap-${lastIdx}-${idx}` });
+                    resultRows.push({ ...data[idx], originalIndex: idx + 1, isMatch: matchIndices.includes(idx), rowUniqueKey: `data-${idx}` });
+                    lastIdx = idx;
+                });
+
+                return { displayRows: resultRows, pivotData: pivotList, finalFilteredCount: matchIndices.length };
+            }, [data, searchTerm, selectedOperator, actionFilter]);
+
+            return (
+                <div className="min-h-screen bg-slate-950 text-slate-100 font-sans relative overflow-hidden">
+                    {/* 科技背景裝飾 */}
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,#1e293b,transparent)] pointer-events-none"></div>
+                    <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: `url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cpath d="M60 60L30 30L0 60" fill="none" stroke="%23fff" stroke-width="1"/%3E%3C/svg%3E')`, backgroundSize: '30px 30px' }}></div>
+
+                    {/* 科技感導航欄 */}
+                    <nav className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-cyan-500/30 shadow-[0_4px_30px_rgba(6,182,212,0.15)]">
+                        <div className="max-w-full mx-auto px-6 h-16 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="relative">
+                                    <div className="absolute -inset-1 bg-cyan-500 rounded-lg blur opacity-25"></div>
+                                    <div className="relative p-2 bg-slate-900 rounded-lg border border-cyan-500/50">
+                                        <Icon name="terminal" className="w-6 h-6 text-cyan-400" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-black text-white tracking-widest uppercase italic">系統作業紀錄 <span className="text-cyan-400 font-normal underline underline-offset-4 decoration-1 font-tech">Crafted by 勝全 · Powered by AI</span></h1>
+                                    <div className="flex items-center gap-2 text-[10px] text-cyan-500/60 font-bold tracking-[0.25em]">
+                                        <Icon name="radio" className="w-3 h-3 animate-pulse text-cyan-500" /> 生產行為日誌追踪器
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-6">
+                                {fileName && (
+                                    <div className="flex items-center gap-3 bg-cyan-500/5 border border-cyan-500/20 px-4 py-1.5 rounded-full">
+                                        <div className="w-2 h-2 bg-emerald-500 rounded-full shadow-[0_0_8px_#10b981]"></div>
+                                        <span className="text-xs font-black text-cyan-100 tracking-wider uppercase opacity-80">{fileName}</span>
+                                    </div>
+                                )}
+                                <div className="h-4 w-px bg-slate-800"></div>
+                                <div className="text-[10px] font-black text-slate-500 tracking-[0.2em] uppercase">系統狀態: <span className="text-emerald-500">在線</span></div>
+                            </div>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-full mx-auto px-6 py-6 space-y-6 relative z-10">
+                        {/* 頂部搜尋與快速標籤區 */}
+                        <section className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
+                            <div className="md:col-span-3 lg:col-span-2 bg-slate-900/50 backdrop-blur-md p-5 rounded-2xl border border-slate-800 flex flex-col justify-center min-h-[120px]">
+                                {!data.length ? (
+                                    <div className="relative h-20 flex flex-col items-center justify-center border-2 border-dashed border-slate-800 rounded-xl hover:bg-cyan-500/5 hover:border-cyan-500/50 transition-all cursor-pointer">
+                                        <input type="file" ref={fileInputRef} accept=".xlsx, .xls" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                                        <Icon name="upload" className="w-6 h-6 text-slate-600 mb-1" />
+                                        <span className="text-[10px] font-black text-slate-500 uppercase">匯入資料庫</span>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="text-[10px] font-black text-cyan-500/50 mb-1 tracking-widest uppercase">數據節點總數</div>
+                                        <div className="text-3xl font-black text-white leading-none tabular-nums tracking-tighter">
+                                            {data.length.toLocaleString()}
+                                        </div>
+                                        <button onClick={() => {setData([]); setSearchTerm(''); setSelectedOperator(null);}} className="mt-3 flex items-center gap-1.5 text-[10px] font-black text-rose-500/80 hover:text-rose-400 uppercase tracking-widest transition-colors">
+                                            <Icon name="x" className="w-3 h-3" /> 清除緩存數據
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="md:col-span-9 lg:col-span-10 flex flex-col gap-3">
+                                <div className="flex gap-4">
+                                    <div className="flex-1 bg-slate-900/50 backdrop-blur-md rounded-2xl border border-slate-800 p-2 flex items-center shadow-lg">
+                                        <div className="relative flex-1 group">
+                                            <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-600 group-focus-within:text-cyan-400 transition-colors" />
+                                            <input
+                                                type="text"
+                                                placeholder="輸入關鍵字或從下方標籤點擊..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                disabled={!data.length}
+                                                className="w-full bg-transparent border-none rounded-xl py-3 pl-14 pr-6 text-lg font-bold outline-none text-white placeholder:text-slate-700"
+                                            />
+                                        </div>
+                                        
+                                        <div className="h-10 w-px bg-slate-800 mx-2"></div>
+                                        <div className="relative flex items-center px-4 gap-3 bg-slate-950/50 rounded-xl border border-slate-800 min-w-[200px]">
+                                            <Icon name="filter" className="w-4 h-4 text-cyan-500" />
+                                            <select 
+                                                value={actionFilter}
+                                                onChange={(e) => setActionFilter(e.target.value)}
+                                                disabled={!data.length}
+                                                className="bg-transparent text-sm font-black text-cyan-100 outline-none w-full cursor-pointer appearance-none py-2 uppercase tracking-wider"
+                                            >
+                                                <option value="all">全部作業動作 (ALL)</option>
+                                                {actionOptions.map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar px-1">
+                                    <span className="text-[10px] font-black text-slate-600 flex items-center gap-1 whitespace-nowrap uppercase tracking-widest mr-2">
+                                        <Icon name="tag" className="w-3 h-3" /> 快速掃描:
+                                    </span>
+                                    {quickTags.map(tag => (
+                                        <button
+                                            key={tag}
+                                            disabled={!data.length}
+                                            onClick={() => setSearchTerm(tag)}
+                                            className={`px-3 py-1 rounded-full text-[11px] font-black tracking-wider transition-all border ${searchTerm === tag ? 'bg-cyan-500 border-cyan-400 text-slate-950 shadow-[0_0_10px_rgba(6,182,212,0.4)]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-400'}`}
+                                        >
+                                            {tag}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </section>
+
+                        <div className="flex flex-col lg:flex-row gap-6 items-start">
+                            {/* 左側命中名單 */}
+                            <section className="w-full lg:w-72 flex-shrink-0 bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl overflow-hidden self-stretch lg:self-auto">
+                                <div className="px-5 py-4 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between">
+                                    <h3 className="font-black text-cyan-500 text-[11px] tracking-[0.2em] flex items-center gap-2 uppercase">
+                                        <Icon name="shield" className="w-4 h-4" /> 目標操作員
+                                    </h3>
+                                    <div className="bg-cyan-500/20 text-cyan-400 text-[10px] px-2 py-0.5 rounded border border-cyan-500/30 font-black">{pivotData.length}</div>
+                                </div>
+                                <div className="p-3 space-y-2 max-h-[650px] overflow-y-auto custom-scrollbar-dark">
+                                    {pivotData.length > 0 ? pivotData.map((item) => (
+                                        <button
+                                            key={`p-${item.name}`}
+                                            onClick={() => setSelectedOperator(selectedOperator === item.name ? null : item.name)}
+                                            className={`w-full flex items-center justify-between p-3 rounded-xl text-sm transition-all group ${selectedOperator === item.name ? 'bg-cyan-500 text-slate-950 font-black shadow-[0_0_20px_rgba(6,182,212,0.4)]' : 'bg-slate-950/50 text-slate-400 hover:bg-slate-800/80 border border-slate-800 hover:border-cyan-500/30'}`}
+                                        >
+                                            <span className="truncate tracking-tight uppercase font-bold">{item.name}</span>
+                                            <span className={`font-mono text-[10px] px-2 py-0.5 rounded-md ${selectedOperator === item.name ? 'bg-slate-950 text-cyan-400' : 'bg-slate-800 text-cyan-500'}`}>
+                                                {item.count}
+                                            </span>
+                                        </button>
+                                    )) : (
+                                        <div className="text-center py-20 opacity-20">
+                                            <Icon name="chart" className="w-12 h-12 text-slate-500 mx-auto mb-3" />
+                                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em]">待機掃描中</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+
+                            {/* 右側核心表格 */}
+                            <section className="flex-1 min-w-0 bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative">
+                                <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/30">
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative">
+                                            <div className="w-2.5 h-2.5 bg-cyan-500 rounded-full"></div>
+                                            <div className="absolute inset-0 w-2.5 h-2.5 bg-cyan-500 rounded-full animate-ping opacity-75"></div>
+                                        </div>
+                                        <h2 className="font-black text-white tracking-[0.1em] text-sm uppercase">生產溯源數據流 <span className="text-[10px] text-cyan-500/50 ml-2">Live Analysis</span></h2>
+                                    </div>
+                                    {searchTerm && (
+                                        <div className="bg-cyan-950 border border-cyan-500/50 px-3 py-1 rounded-md text-[10px] font-black text-cyan-400 shadow-[0_0_10px_rgba(6,182,212,0.2)]">
+                                            檢測到 {finalFilteredCount} 組關聯節點
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="overflow-auto max-h-[750px] custom-scrollbar relative">
+                                    <table className="w-full text-left border-collapse min-w-max">
+                                        <thead className="bg-slate-950/80 backdrop-blur sticky top-0 z-30 shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
+                                            <tr>
+                                                <th className="px-4 py-4 w-16 text-center border-r border-slate-800 font-black text-[10px] text-slate-500 uppercase tracking-widest bg-slate-950">排序</th>
+                                                {displayColumns.map(col => (
+                                                    <th key={`th-${col.key}`} style={{ width: col.width }} className="px-4 py-4 font-black text-[10px] text-slate-500 uppercase tracking-widest border-r border-slate-800 last:border-0 bg-slate-950">{col.label}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800/50">
+                                            {displayRows.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={displayColumns.length + 1} className="py-40 text-center">
+                                                        <Icon name="database" className="w-16 h-16 text-slate-800 mx-auto mb-4 opacity-20" />
+                                                        <p className="text-slate-600 font-black uppercase tracking-[0.4em] text-xs">系統待命中，請輸入搜尋指令</p>
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                displayRows.map((row) => {
+                                                    if (row.isGap) return (
+                                                        <tr key={row.rowUniqueKey} className="bg-slate-950/50">
+                                                            <td colSpan={displayColumns.length + 1} className="py-2 text-center text-[10px] font-black text-slate-600 tracking-[0.8em] uppercase italic bg-gradient-to-r from-transparent via-slate-800/50 to-transparent">
+                                                                --- 檢測到數據分斷 · 自動重新定位 ---
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                    const isMatch = row.isMatch;
+                                                    return (
+                                                        <tr key={row.rowUniqueKey} className={`transition-all duration-150 group ${isMatch ? 'bg-cyan-500/20 text-white' : 'bg-transparent text-slate-400 hover:bg-white/[0.02]'}`}>
+                                                            <td className={`px-4 py-3 text-center font-mono text-xs border-r ${isMatch ? 'bg-cyan-500/30 border-cyan-500/30 text-cyan-100 font-black' : 'text-slate-600 bg-slate-950/30 border-slate-800'}`}>
+                                                                {String(row.originalIndex).padStart(4, '0')}
+                                                            </td>
+                                                            {displayColumns.map(col => (
+                                                                <td key={`${row.rowUniqueKey}-${col.key}`} className={`px-4 py-3 border-r last:border-0 align-middle ${isMatch ? 'border-cyan-500/20' : 'border-slate-800/50'}`}>
+                                                                    {col.key === '狀態' ? <StatusBadge status={row[col.key]} /> : (
+                                                                        <div 
+                                                                            className={`whitespace-nowrap overflow-hidden leading-none text-[16px] tracking-tight ${isMatch ? 'text-cyan-300 font-black drop-shadow-[0_0_5px_rgba(6,182,212,0.5)]' : 'text-slate-300 font-bold group-hover:text-white'}`}
+                                                                            style={{ maxWidth: col.width }}
+                                                                            title={row[col.key] || ''}
+                                                                        >
+                                                                            {col.key === '備註' ? (
+                                                                                <span className="truncate block opacity-70 group-hover:opacity-100 transition-opacity">{row[col.key] || '-'}</span>
+                                                                            ) : (
+                                                                                row[col.key] || '-'
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ProductionDashboard />);
+    </script>
+</body>
+</html>
